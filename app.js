@@ -1,205 +1,203 @@
-// =======================
-// app.js (FULL VERSION)
-// =======================
-
+// ===================== IMPORTS =====================
 const express = require("express");
 const cors = require("cors");
-const dotenv = require("dotenv");
-dotenv.config();
-
 const DbService = require("./dbService");
+require("dotenv").config();
+
+// ===================== APP INIT =====================
 const app = express();
 
-app.use(cors());
+// ---- FIXED CORS (WORKS FOR NETLIFY + RAILWAY) ----
+app.use(
+  cors({
+    origin: "*",
+    methods: "GET,POST,PUT,DELETE,OPTIONS",
+    allowedHeaders: "Content-Type, Authorization",
+  })
+);
+
+app.options("*", cors()); // Preflight support
+
 app.use(express.json());
 
-const db = DbService.getDbServiceInstance();
-
-app.get("/", (req, res) => {
-  res.json({ message: "Home Cleaning System Backend Running" });
-});
-
-// ===========================
-// LOGIN
-// ===========================
+// ===================== AUTH =====================
 app.post("/auth/login", async (req, res) => {
-  const { username, password } = req.body;
-  const result = await db.loginUser(username, password);
-  res.json(result);
+  try {
+    const db = DbService.getDbServiceInstance();
+    const result = await db.login(req.body.username, req.body.password);
+    res.json(result);
+  } catch (err) {
+    console.error("Login error:", err);
+    res.status(500).json({ error: "Login failed" });
+  }
 });
 
-// ===========================
-// REGISTER CLIENT
-// ===========================
+// ===================== REGISTER CLIENT =====================
 app.post("/clients/register", async (req, res) => {
-  const {
-    first_name,
-    last_name,
-    address,
-    phone,
-    email,
-    cc_last4,
-    cc_token,
-    password
-  } = req.body;
-
-  const result = await db.registerClient(
-    first_name,
-    last_name,
-    address,
-    phone,
-    email,
-    cc_last4,
-    cc_token,
-    password
-  );
-
-  res.json(result);
+  try {
+    const db = DbService.getDbServiceInstance();
+    const result = await db.registerClient(req.body);
+    res.json(result);
+  } catch (err) {
+    console.error("Register error:", err);
+    res.status(500).json({ error: "Registration failed" });
+  }
 });
 
-// ===========================
-// CREATE REQUEST
-// ===========================
+// ===================== CREATE SERVICE REQUEST =====================
 app.post("/requests/new", async (req, res) => {
-  const {
-    client_id,
-    service_address,
-    cleaning_type,
-    num_rooms,
-    preferred_datetime,
-    proposed_budget,
-    notes
-  } = req.body;
-
-  const result = await db.createServiceRequest(
-    client_id,
-    service_address,
-    cleaning_type,
-    num_rooms,
-    preferred_datetime || null,
-    proposed_budget || null,
-    notes || null
-  );
-
-  res.json(result);
+  try {
+    const db = DbService.getDbServiceInstance();
+    const result = await db.createRequest(req.body);
+    res.json(result);
+  } catch (err) {
+    console.error("Request error:", err);
+    res.status(500).json({ error: "Request creation failed" });
+  }
 });
 
-// ===========================
-// ADD PHOTO
-// ===========================
-app.post("/requests/add-photo", async (req, res) => {
-  const { request_id, photo_url } = req.body;
-  const result = await db.addPhoto(request_id, photo_url);
-  res.json(result);
-});
-
-// ===========================
-// CREATE QUOTE
-// ===========================
+// ===================== QUOTES =====================
 app.post("/quotes/create", async (req, res) => {
-  const {
-    request_id,
-    price,
-    time_window_start,
-    time_window_end,
-    note
-  } = req.body;
-
-  const result = await db.createQuote(
-    request_id,
-    price,
-    time_window_start,
-    time_window_end,
-    note
-  );
-
-  res.json(result);
+  try {
+    const db = DbService.getDbServiceInstance();
+    const result = await db.createQuote(req.body);
+    res.json(result);
+  } catch (err) {
+    console.error("Quote error:", err);
+    res.status(500).json({ error: "Quote creation failed" });
+  }
 });
 
-// ===========================
-// ACCEPT QUOTE
-// ===========================
 app.post("/quotes/accept", async (req, res) => {
-  const { quote_id } = req.body;
-  const result = await db.acceptQuote(quote_id);
-  res.json(result);
+  try {
+    const db = DbService.getDbServiceInstance();
+    const result = await db.acceptQuote(req.body.quote_id);
+    res.json(result);
+  } catch (err) {
+    console.error("Accept quote error:", err);
+    res.status(500).json({ error: "Accept quote failed" });
+  }
 });
 
-// ===========================
-// COMPLETE ORDER
-// ===========================
+// ===================== ORDERS =====================
 app.post("/orders/complete", async (req, res) => {
-  const { order_id } = req.body;
-  const result = await db.completeOrder(order_id);
-  res.json(result);
+  try {
+    const db = DbService.getDbServiceInstance();
+    const result = await db.completeOrder(req.body.order_id);
+    res.json(result);
+  } catch (err) {
+    console.error("Order error:", err);
+    res.status(500).json({ error: "Order completion failed" });
+  }
 });
 
-// ===========================
-// CREATE BILL
-// ===========================
+// ===================== BILLS =====================
 app.post("/bills/create", async (req, res) => {
-  const { order_id, amount } = req.body;
-  const result = await db.createBill(order_id, amount);
-  res.json(result);
+  try {
+    const db = DbService.getDbServiceInstance();
+    const result = await db.createBill(req.body);
+    res.json(result);
+  } catch (err) {
+    console.error("Bill error:", err);
+    res.status(500).json({ error: "Bill creation failed" });
+  }
 });
 
-// ===========================
-// PAY BILL
-// ===========================
 app.post("/bills/pay", async (req, res) => {
-  const { bill_id, client_id, amount } = req.body;
-  const result = await db.payBill(bill_id, client_id, amount);
-  res.json(result);
+  try {
+    const db = DbService.getDbServiceInstance();
+    const result = await db.payBill(req.body);
+    res.json(result);
+  } catch (err) {
+    console.error("Pay bill error:", err);
+    res.status(500).json({ error: "Bill payment failed" });
+  }
 });
 
-// ===========================
-// DISPUTE BILL
-// ===========================
 app.post("/bills/dispute", async (req, res) => {
-  const { bill_id, note } = req.body;
-  const result = await db.disputeBill(bill_id, note);
-  res.json(result);
+  try {
+    const db = DbService.getDbServiceInstance();
+    const result = await db.disputeBill(req.body);
+    res.json(result);
+  } catch (err) {
+    console.error("Dispute bill error:", err);
+    res.status(500).json({ error: "Bill dispute failed" });
+  }
 });
 
-// ===========================
-// DASHBOARD
-// ===========================
-app.get("/dashboard/frequent-clients", async (req, res) => {
-  res.json(await db.frequentClients());
+// ===================== DASHBOARD =====================
+app.get("/dashboard/frequent-clients", async (_, res) => {
+  try {
+    const db = DbService.getDbServiceInstance();
+    res.json(await db.frequentClients());
+  } catch (err) {
+    console.error("Dashboard error:", err);
+    res.status(500).json({ error: "Query failed" });
+  }
 });
 
-app.get("/dashboard/uncommitted-clients", async (req, res) => {
-  res.json(await db.uncommittedClients());
+app.get("/dashboard/uncommitted-clients", async (_, res) => {
+  try {
+    const db = DbService.getDbServiceInstance();
+    res.json(await db.uncommittedClients());
+  } catch (err) {
+    console.error("Dashboard error:", err);
+    res.status(500).json({ error: "Query failed" });
+  }
 });
 
-app.get("/dashboard/accepted-quotes", async (req, res) => {
-  const { year, month } = req.query;
-  res.json(await db.acceptedQuotes(year, month));
+app.get("/dashboard/prospective-clients", async (_, res) => {
+  try {
+    const db = DbService.getDbServiceInstance();
+    res.json(await db.prospectiveClients());
+  } catch (err) {
+    console.error("Dashboard error:", err);
+    res.status(500).json({ error: "Query failed" });
+  }
 });
 
-app.get("/dashboard/prospective-clients", async (req, res) => {
-  res.json(await db.prospectiveClients());
+app.get("/dashboard/largest-job", async (_, res) => {
+  try {
+    const db = DbService.getDbServiceInstance();
+    res.json(await db.largestJob());
+  } catch (err) {
+    console.error("Dashboard error:", err);
+    res.status(500).json({ error: "Query failed" });
+  }
 });
 
-app.get("/dashboard/largest-job", async (req, res) => {
-  res.json(await db.largestJob());
+app.get("/dashboard/overdue-bills", async (_, res) => {
+  try {
+    const db = DbService.getDbServiceInstance();
+    res.json(await db.overdueBills());
+  } catch (err) {
+    console.error("Dashboard error:", err);
+    res.status(500).json({ error: "Query failed" });
+  }
 });
 
-app.get("/dashboard/overdue-bills", async (req, res) => {
-  res.json(await db.overdueBills());
+app.get("/dashboard/bad-clients", async (_, res) => {
+  try {
+    const db = DbService.getDbServiceInstance();
+    res.json(await db.badClients());
+  } catch (err) {
+    console.error("Dashboard error:", err);
+    res.status(500).json({ error: "Query failed" });
+  }
 });
 
-app.get("/dashboard/bad-clients", async (req, res) => {
-  res.json(await db.badClients());
+app.get("/dashboard/good-clients", async (_, res) => {
+  try {
+    const db = DbService.getDbServiceInstance();
+    res.json(await db.goodClients());
+  } catch (err) {
+    console.error("Dashboard error:", err);
+    res.status(500).json({ error: "Query failed" });
+  }
 });
 
-app.get("/dashboard/good-clients", async (req, res) => {
-  res.json(await db.goodClients());
-});
-
-// ===========================
-// START SERVER
-// ===========================
-app.listen(process.env.PORT, () => {
-  console.log("Backend running on port:", process.env.PORT);
+// ===================== SERVER LISTEN =====================
+const PORT = process.env.PORT || 5052;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
