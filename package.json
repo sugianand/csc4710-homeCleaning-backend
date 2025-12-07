@@ -4,8 +4,9 @@
   "description": "",
   "main": "app.js",
   "scripts": {
-  "start": "nodemon app.js"
-},
+    "start": "node app.js",
+    "import-db": "node importSQL.js"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
