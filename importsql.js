@@ -1,7 +1,7 @@
 const fs = require("fs");
 const mysql = require("mysql2/promise");
 
-(async () => {
+async function importSQL() {
   try {
     const conn = await mysql.createConnection({
       host: process.env.HOST,
@@ -15,28 +15,27 @@ const mysql = require("mysql2/promise");
 
     const sql = fs.readFileSync("cleaning_service.sql", "utf8");
 
-    // Split on semicolon that ends a command
     const statements = sql
-      .replace(/\/\*![\s\S]*?\*\//g, "")  // remove /*! comments */
+      .replace(/\/\*![\s\S]*?\*\//g, "")
       .split(/;\s*[\r\n]+/);
 
     for (let stmt of statements) {
       stmt = stmt.trim();
       if (!stmt) continue;
-
       try {
         console.log("Running:", stmt.substring(0, 60), "...");
         await conn.query(stmt);
       } catch (err) {
-        console.error("Error:", err.message);
+        console.error("Error running statement:", err.message);
       }
     }
 
     console.log("SQL IMPORT COMPLETE.");
-    process.exit(0);
-
+    return { success: true };
   } catch (err) {
     console.error("Connection error:", err);
-    process.exit(1);
+    return { success: false, error: err.message };
   }
-})();
+}
+
+module.exports = importSQL;
