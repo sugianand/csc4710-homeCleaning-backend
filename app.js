@@ -15,11 +15,11 @@ app.use(express.json());
 
 // ====================== DB CONNECTION ======================
 const db = mysql.createConnection({
-  host: process.env.HOST,                 // mysql.railway.internal
-  user: process.env.DB_USER,              // root
-  password: process.env.PASSWORD,         // your Railway MySQL password
-  database: process.env.DATABASE,         // railway
-  port: process.env.DB_PORT               // 3306
+  host: process.env.DB_HOST,      // caboose.proxy.rlwy.net
+  user: process.env.DB_USER,      // root
+  password: process.env.DB_PASS,  // Railway MySQL password
+  database: process.env.DB_NAME,  // railway
+  port: process.env.DB_PORT       // 32280
 });
 
 // Connect to MySQL
@@ -41,7 +41,7 @@ app.get("/import-db", async (req, res) => {
   const result = await importSQL();
   res.json(result);
 });
-// ⚠️ Delete this route after SQL is imported once.
+// ⚠️ Delete after running once.
 
 // ====================== AUTH ======================
 app.post("/auth/login", (req, res) => {
@@ -53,11 +53,10 @@ app.post("/auth/login", (req, res) => {
     (err, results) => {
       if (err) return res.json({ success: false, error: err.message });
 
-      if (results.length === 0) {
-        return res.json({ success: false });
-      }
+      if (results.length === 0) return res.json({ success: false });
 
       const user = results[0];
+
       return res.json({
         success: true,
         role: user.role,
@@ -69,7 +68,8 @@ app.post("/auth/login", (req, res) => {
 
 // ====================== REGISTER CLIENT ======================
 app.post("/clients/register", (req, res) => {
-  const { first_name, last_name, address, phone, email, password, cc_last4 } = req.body;
+  const { first_name, last_name, address, phone, email, password, cc_last4 } =
+    req.body;
 
   const sql = `
     INSERT INTO client (first_name, last_name, address, phone, email, password, cc_last4)
@@ -78,7 +78,15 @@ app.post("/clients/register", (req, res) => {
 
   db.query(
     sql,
-    [first_name, last_name, address, phone, email, password, cc_last4 || null],
+    [
+      first_name,
+      last_name,
+      address,
+      phone,
+      email,
+      password,
+      cc_last4 || null
+    ],
     (err, result) => {
       if (err) return res.json({ success: false, error: err.message });
       res.json({ success: true, client_id: result.insertId });
@@ -88,7 +96,15 @@ app.post("/clients/register", (req, res) => {
 
 // ====================== CREATE SERVICE REQUEST ======================
 app.post("/requests/new", upload.array("photos", 5), (req, res) => {
-  const { client_id, service_address, cleaning_type, rooms, preferred_date, budget, notes } = req.body;
+  const {
+    client_id,
+    service_address,
+    cleaning_type,
+    rooms,
+    preferred_date,
+    budget,
+    notes
+  } = req.body;
 
   const sql = `
     INSERT INTO service_request 
@@ -98,7 +114,15 @@ app.post("/requests/new", upload.array("photos", 5), (req, res) => {
 
   db.query(
     sql,
-    [client_id, service_address, cleaning_type, rooms, preferred_date, budget, notes],
+    [
+      client_id,
+      service_address,
+      cleaning_type,
+      rooms,
+      preferred_date,
+      budget,
+      notes
+    ],
     (err, result) => {
       if (err) return res.json({ success: false, error: err.message });
       res.json({ success: true, request_id: result.insertId });
@@ -115,10 +139,14 @@ app.post("/quotes/create", (req, res) => {
     VALUES (?, ?, ?, ?)
   `;
 
-  db.query(sql, [request_id, contractor_id, amount, valid_until], (err, result) => {
-    if (err) return res.json({ success: false, error: err.message });
-    res.json({ success: true, quote_id: result.insertId });
-  });
+  db.query(
+    sql,
+    [request_id, contractor_id, amount, valid_until],
+    (err, result) => {
+      if (err) return res.json({ success: false, error: err.message });
+      res.json({ success: true, quote_id: result.insertId });
+    }
+  );
 });
 
 // ====================== ACCEPT QUOTE ======================
@@ -195,7 +223,7 @@ app.post("/bills/dispute", (req, res) => {
 // ====================== DASHBOARD QUERIES ======================
 app.get("/dashboard/frequent-clients", (req, res) => {
   db.query(
-    "SELECT client_id, COUNT(*) as jobs FROM service_request GROUP BY client_id ORDER BY jobs DESC LIMIT 5",
+    "SELECT client_id, COUNT(*) AS jobs FROM service_request GROUP BY client_id ORDER BY jobs DESC LIMIT 5",
     (err, rows) => res.json(rows)
   );
 });
@@ -242,9 +270,5 @@ app.get("/dashboard/good-clients", (req, res) => {
   );
 });
 
-// ====================== SERVER LISTEN ======================
-const PORT = process.env.PORT || 5052;
-
-app.listen(PORT, () => {
-  console.log("Backend running on port:", PORT);
-});
+// ====================== EXPORT FOR VERCEL ======================
+module.exports = app;
