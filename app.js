@@ -1,203 +1,250 @@
-// ===================== IMPORTS =====================
+// ====================== IMPORTS ======================
 const express = require("express");
 const cors = require("cors");
-const DbService = require("./dbService");
-require("dotenv").config();
+const mysql = require("mysql2");
+const multer = require("multer");
+const dotenv = require("dotenv");
+const importSQL = require("./importSQL");
 
-// ===================== APP INIT =====================
+dotenv.config();
+
+// ====================== APP INIT ======================
 const app = express();
-
-// ---- FIXED CORS (WORKS FOR NETLIFY + RAILWAY) ----
-app.use(
-  cors({
-    origin: "*",
-    methods: "GET,POST,PUT,DELETE,OPTIONS",
-    allowedHeaders: "Content-Type, Authorization",
-  })
-);
-
-app.options("*", cors()); // Preflight support
-
+app.use(cors());
 app.use(express.json());
 
-// ===================== AUTH =====================
-app.post("/auth/login", async (req, res) => {
-  try {
-    const db = DbService.getDbServiceInstance();
-    const result = await db.login(req.body.username, req.body.password);
-    res.json(result);
-  } catch (err) {
-    console.error("Login error:", err);
-    res.status(500).json({ error: "Login failed" });
+// ====================== DB CONNECTION ======================
+const db = mysql.createConnection({
+  host: process.env.HOST,                 // mysql.railway.internal
+  user: process.env.DB_USER,              // root
+  password: process.env.PASSWORD,         // your Railway MySQL password
+  database: process.env.DATABASE,         // railway
+  port: process.env.DB_PORT               // 3306
+});
+
+// Connect to MySQL
+db.connect((err) => {
+  if (err) {
+    console.error("DATABASE CONNECTION FAILED:", err);
+  } else {
+    console.log("Connected to Railway MySQL!");
   }
 });
 
-// ===================== REGISTER CLIENT =====================
-app.post("/clients/register", async (req, res) => {
-  try {
-    const db = DbService.getDbServiceInstance();
-    const result = await db.registerClient(req.body);
-    res.json(result);
-  } catch (err) {
-    console.error("Register error:", err);
-    res.status(500).json({ error: "Registration failed" });
-  }
+// ====================== MULTER SETUP ======================
+const upload = multer({ storage: multer.memoryStorage() });
+
+// ====================== ROUTES ======================
+
+// ----------- TEMPORARY: IMPORT SQL INTO RAILWAY -----------
+app.get("/import-db", async (req, res) => {
+  const result = await importSQL();
+  res.json(result);
+});
+// ⚠️ Delete this route after SQL is imported once.
+
+// ====================== AUTH ======================
+app.post("/auth/login", (req, res) => {
+  const { username, password } = req.body;
+
+  db.query(
+    "SELECT * FROM client WHERE email = ? AND password = ?",
+    [username, password],
+    (err, results) => {
+      if (err) return res.json({ success: false, error: err.message });
+
+      if (results.length === 0) {
+        return res.json({ success: false });
+      }
+
+      const user = results[0];
+      return res.json({
+        success: true,
+        role: user.role,
+        client_id: user.client_id
+      });
+    }
+  );
 });
 
-// ===================== CREATE SERVICE REQUEST =====================
-app.post("/requests/new", async (req, res) => {
-  try {
-    const db = DbService.getDbServiceInstance();
-    const result = await db.createRequest(req.body);
-    res.json(result);
-  } catch (err) {
-    console.error("Request error:", err);
-    res.status(500).json({ error: "Request creation failed" });
-  }
+// ====================== REGISTER CLIENT ======================
+app.post("/clients/register", (req, res) => {
+  const { first_name, last_name, address, phone, email, password, cc_last4 } = req.body;
+
+  const sql = `
+    INSERT INTO client (first_name, last_name, address, phone, email, password, cc_last4)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `;
+
+  db.query(
+    sql,
+    [first_name, last_name, address, phone, email, password, cc_last4 || null],
+    (err, result) => {
+      if (err) return res.json({ success: false, error: err.message });
+      res.json({ success: true, client_id: result.insertId });
+    }
+  );
 });
 
-// ===================== QUOTES =====================
-app.post("/quotes/create", async (req, res) => {
-  try {
-    const db = DbService.getDbServiceInstance();
-    const result = await db.createQuote(req.body);
-    res.json(result);
-  } catch (err) {
-    console.error("Quote error:", err);
-    res.status(500).json({ error: "Quote creation failed" });
-  }
+// ====================== CREATE SERVICE REQUEST ======================
+app.post("/requests/new", upload.array("photos", 5), (req, res) => {
+  const { client_id, service_address, cleaning_type, rooms, preferred_date, budget, notes } = req.body;
+
+  const sql = `
+    INSERT INTO service_request 
+      (client_id, service_address, cleaning_type, rooms, preferred_date, budget, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `;
+
+  db.query(
+    sql,
+    [client_id, service_address, cleaning_type, rooms, preferred_date, budget, notes],
+    (err, result) => {
+      if (err) return res.json({ success: false, error: err.message });
+      res.json({ success: true, request_id: result.insertId });
+    }
+  );
 });
 
-app.post("/quotes/accept", async (req, res) => {
-  try {
-    const db = DbService.getDbServiceInstance();
-    const result = await db.acceptQuote(req.body.quote_id);
-    res.json(result);
-  } catch (err) {
-    console.error("Accept quote error:", err);
-    res.status(500).json({ error: "Accept quote failed" });
-  }
+// ====================== CREATE QUOTE ======================
+app.post("/quotes/create", (req, res) => {
+  const { request_id, contractor_id, amount, valid_until } = req.body;
+
+  const sql = `
+    INSERT INTO quote (request_id, contractor_id, amount, valid_until)
+    VALUES (?, ?, ?, ?)
+  `;
+
+  db.query(sql, [request_id, contractor_id, amount, valid_until], (err, result) => {
+    if (err) return res.json({ success: false, error: err.message });
+    res.json({ success: true, quote_id: result.insertId });
+  });
 });
 
-// ===================== ORDERS =====================
-app.post("/orders/complete", async (req, res) => {
-  try {
-    const db = DbService.getDbServiceInstance();
-    const result = await db.completeOrder(req.body.order_id);
-    res.json(result);
-  } catch (err) {
-    console.error("Order error:", err);
-    res.status(500).json({ error: "Order completion failed" });
-  }
+// ====================== ACCEPT QUOTE ======================
+app.post("/quotes/accept", (req, res) => {
+  const { quote_id } = req.body;
+
+  db.query(
+    "UPDATE quote SET status = 'ACCEPTED' WHERE quote_id = ?",
+    [quote_id],
+    (err) => {
+      if (err) return res.json({ success: false, error: err.message });
+      res.json({ success: true });
+    }
+  );
 });
 
-// ===================== BILLS =====================
-app.post("/bills/create", async (req, res) => {
-  try {
-    const db = DbService.getDbServiceInstance();
-    const result = await db.createBill(req.body);
-    res.json(result);
-  } catch (err) {
-    console.error("Bill error:", err);
-    res.status(500).json({ error: "Bill creation failed" });
-  }
+// ====================== COMPLETE ORDER ======================
+app.post("/orders/complete", (req, res) => {
+  const { request_id } = req.body;
+
+  db.query(
+    "UPDATE service_request SET status = 'COMPLETED' WHERE request_id = ?",
+    [request_id],
+    (err) => {
+      if (err) return res.json({ success: false, error: err.message });
+      res.json({ success: true });
+    }
+  );
 });
 
-app.post("/bills/pay", async (req, res) => {
-  try {
-    const db = DbService.getDbServiceInstance();
-    const result = await db.payBill(req.body);
-    res.json(result);
-  } catch (err) {
-    console.error("Pay bill error:", err);
-    res.status(500).json({ error: "Bill payment failed" });
-  }
+// ====================== CREATE BILL ======================
+app.post("/bills/create", (req, res) => {
+  const { request_id, amount_due, due_date } = req.body;
+
+  const sql = `
+    INSERT INTO bill (request_id, amount_due, due_date)
+    VALUES (?, ?, ?)
+  `;
+
+  db.query(sql, [request_id, amount_due, due_date], (err, result) => {
+    if (err) return res.json({ success: false, error: err.message });
+    res.json({ success: true, bill_id: result.insertId });
+  });
 });
 
-app.post("/bills/dispute", async (req, res) => {
-  try {
-    const db = DbService.getDbServiceInstance();
-    const result = await db.disputeBill(req.body);
-    res.json(result);
-  } catch (err) {
-    console.error("Dispute bill error:", err);
-    res.status(500).json({ error: "Bill dispute failed" });
-  }
+// ====================== PAY BILL ======================
+app.post("/bills/pay", (req, res) => {
+  const { bill_id } = req.body;
+
+  db.query(
+    "UPDATE bill SET paid = 1 WHERE bill_id = ?",
+    [bill_id],
+    (err) => {
+      if (err) return res.json({ success: false, error: err.message });
+      res.json({ success: true });
+    }
+  );
 });
 
-// ===================== DASHBOARD =====================
-app.get("/dashboard/frequent-clients", async (_, res) => {
-  try {
-    const db = DbService.getDbServiceInstance();
-    res.json(await db.frequentClients());
-  } catch (err) {
-    console.error("Dashboard error:", err);
-    res.status(500).json({ error: "Query failed" });
-  }
+// ====================== DISPUTE BILL ======================
+app.post("/bills/dispute", (req, res) => {
+  const { bill_id, reason } = req.body;
+
+  db.query(
+    "UPDATE bill SET dispute_reason = ? WHERE bill_id = ?",
+    [reason, bill_id],
+    (err) => {
+      if (err) return res.json({ success: false, error: err.message });
+      res.json({ success: true });
+    }
+  );
 });
 
-app.get("/dashboard/uncommitted-clients", async (_, res) => {
-  try {
-    const db = DbService.getDbServiceInstance();
-    res.json(await db.uncommittedClients());
-  } catch (err) {
-    console.error("Dashboard error:", err);
-    res.status(500).json({ error: "Query failed" });
-  }
+// ====================== DASHBOARD QUERIES ======================
+app.get("/dashboard/frequent-clients", (req, res) => {
+  db.query(
+    "SELECT client_id, COUNT(*) as jobs FROM service_request GROUP BY client_id ORDER BY jobs DESC LIMIT 5",
+    (err, rows) => res.json(rows)
+  );
 });
 
-app.get("/dashboard/prospective-clients", async (_, res) => {
-  try {
-    const db = DbService.getDbServiceInstance();
-    res.json(await db.prospectiveClients());
-  } catch (err) {
-    console.error("Dashboard error:", err);
-    res.status(500).json({ error: "Query failed" });
-  }
+app.get("/dashboard/uncommitted-clients", (req, res) => {
+  db.query(
+    "SELECT * FROM client WHERE client_id NOT IN (SELECT client_id FROM service_request)",
+    (err, rows) => res.json(rows)
+  );
 });
 
-app.get("/dashboard/largest-job", async (_, res) => {
-  try {
-    const db = DbService.getDbServiceInstance();
-    res.json(await db.largestJob());
-  } catch (err) {
-    console.error("Dashboard error:", err);
-    res.status(500).json({ error: "Query failed" });
-  }
+app.get("/dashboard/prospective-clients", (req, res) => {
+  db.query(
+    "SELECT * FROM service_request WHERE status = 'PENDING'",
+    (err, rows) => res.json(rows)
+  );
 });
 
-app.get("/dashboard/overdue-bills", async (_, res) => {
-  try {
-    const db = DbService.getDbServiceInstance();
-    res.json(await db.overdueBills());
-  } catch (err) {
-    console.error("Dashboard error:", err);
-    res.status(500).json({ error: "Query failed" });
-  }
+app.get("/dashboard/largest-job", (req, res) => {
+  db.query(
+    "SELECT * FROM service_request ORDER BY budget DESC LIMIT 1",
+    (err, rows) => res.json(rows)
+  );
 });
 
-app.get("/dashboard/bad-clients", async (_, res) => {
-  try {
-    const db = DbService.getDbServiceInstance();
-    res.json(await db.badClients());
-  } catch (err) {
-    console.error("Dashboard error:", err);
-    res.status(500).json({ error: "Query failed" });
-  }
+app.get("/dashboard/overdue-bills", (req, res) => {
+  db.query(
+    "SELECT * FROM bill WHERE due_date < NOW() AND paid = 0",
+    (err, rows) => res.json(rows)
+  );
 });
 
-app.get("/dashboard/good-clients", async (_, res) => {
-  try {
-    const db = DbService.getDbServiceInstance();
-    res.json(await db.goodClients());
-  } catch (err) {
-    console.error("Dashboard error:", err);
-    res.status(500).json({ error: "Query failed" });
-  }
+app.get("/dashboard/bad-clients", (req, res) => {
+  db.query(
+    "SELECT * FROM bill WHERE paid = 0 AND due_date < NOW()",
+    (err, rows) => res.json(rows)
+  );
 });
 
-// ===================== SERVER LISTEN =====================
+app.get("/dashboard/good-clients", (req, res) => {
+  db.query(
+    "SELECT * FROM bill WHERE paid = 1",
+    (err, rows) => res.json(rows)
+  );
+});
+
+// ====================== SERVER LISTEN ======================
 const PORT = process.env.PORT || 5052;
+
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log("Backend running on port:", PORT);
 });
